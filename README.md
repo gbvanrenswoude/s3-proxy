@@ -19,9 +19,9 @@ cargo run
 
 ```sh
 docker build -t s3-proxy .
-docker run -p 8080:8080 --rm -it \
+docker run -p 8090:8090 --rm -it \
   -e S3_URL=https://s3-bucket-as-loginpage.ds-fdn-d.aws.insim.biz.s3.eu-west-1.amazonaws.com/index.html \
   s3-proxy
 
-curl http://localhost:8080/index.html
+curl http://localhost:8090/index.html
 ```

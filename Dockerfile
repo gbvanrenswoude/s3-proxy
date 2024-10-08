@@ -8,12 +8,12 @@ RUN rm -f src/main.rs
 COPY src ./src
 RUN cargo build --release
 
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/target/release/s3-proxy /app/s3-proxy
 
-EXPOSE 8080
+EXPOSE 8090
 
 ENV S3_URL=https://s3-bucket-as-loginpage.ds-fdn-d.aws.insim.biz.s3.eu-west-1.amazonaws.com/index.html
 
