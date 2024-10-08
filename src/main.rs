@@ -1,7 +1,7 @@
-use hyper::body::to_bytes;
 use hyper::{
+    body::to_bytes,
     service::{make_service_fn, service_fn},
-    Body, Client, Request, Response, Server, Uri,
+    Body, Client, Request, Response, Server, Uri, StatusCode,
 };
 use hyper_rustls::HttpsConnectorBuilder;
 use rustls::{client::{ServerCertVerifier, ServerCertVerified}, ServerName};
@@ -108,12 +108,20 @@ async fn handle_request(
 
     let start = Instant::now();
 
-    let result = proxy_handler(req, s3_base_uri, remote_addr, client).await;
-
-    let duration = start.elapsed();
-    debug!("Request duration: {:?}", duration);
-
-    result
+    match proxy_handler(req, s3_base_uri, remote_addr, client).await {
+        Ok(response) => {
+            let duration = start.elapsed();
+            debug!("Request duration: {:?}", duration);
+            Ok(response)
+        }
+        Err(e) => {
+            error!("Error handling request: {:?}", e);
+            Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("Internal Server Error"))
+                .unwrap())
+        }
+    }
 }
 
 async fn proxy_handler(
