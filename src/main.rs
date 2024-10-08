@@ -14,9 +14,12 @@ use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, warn};
 use tracing_subscriber::{FmtSubscriber, EnvFilter};
 use rand::Rng;
+use tokio::sync::oneshot;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_RETRIES: u32 = 3;
+const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 struct NoVerifier;
 
@@ -75,33 +78,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = Arc::new(Client::builder().build::<_, hyper::Body>(https));
 
+    let (tx, rx) = oneshot::channel::<()>();
+    let stopping = Arc::new(AtomicBool::new(false));
+
+    let stopping_clone = stopping.clone();
     let make_svc = make_service_fn(move |conn: &hyper::server::conn::AddrStream| {
         let s3_base_uri = s3_base_uri.clone();
         let remote_addr = conn.remote_addr();
         let client = Arc::clone(&client);
+        let stopping = stopping_clone.clone();
         async move {
             Ok::<_, Infallible>(service_fn(move |req| {
-                handle_request(req, s3_base_uri.clone(), remote_addr, Arc::clone(&client))
+                handle_request(req, s3_base_uri.clone(), remote_addr, Arc::clone(&client), stopping.clone())
             }))
         }
     });
 
     let server = Server::bind(&addr).serve(make_svc);
 
+    let graceful = server.with_graceful_shutdown(async {
+        rx.await.ok();
+    });
+
     info!("Listening on http://{}", addr);
 
-    server.await?;
+    tokio::select! {
+        result = graceful => {
+            if let Err(e) = result {
+                error!("Server error: {}", e);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            info!("Received shutdown signal");
+        }
+    }
+
+    info!("Initiating graceful shutdown");
+    stopping.store(true, Ordering::SeqCst);
+    tx.send(()).ok();
+
+    // Wait for the server to finish processing ongoing requests
+    tokio::time::sleep(GRACEFUL_SHUTDOWN_TIMEOUT).await;
+    info!("Server shut down");
 
     Ok(())
 }
 
-#[instrument(skip(req, client))]
+#[instrument(skip(req, client, stopping))]
 async fn handle_request(
     req: Request<Body>,
     s3_base_uri: Uri,
     remote_addr: SocketAddr,
     client: Arc<Client<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>>,
+    stopping: Arc<AtomicBool>,
 ) -> Result<Response<Body>, hyper::Error> {
+    if stopping.load(Ordering::SeqCst) {
+        return Ok(Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .body(Body::from("Server is shutting down"))
+            .unwrap());
+    }
+
     if req.uri().path() == "/healthz" {
         return Ok(Response::new(Body::from("OK")));
     }
