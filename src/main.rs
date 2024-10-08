@@ -1,5 +1,5 @@
+use hyper::body::to_bytes;
 use hyper::{
-    body::to_bytes,
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server, Uri, StatusCode,
 };
@@ -179,7 +179,15 @@ async fn proxy_handler(
                 let status = resp.status();
                 info!("Response from S3: status {}", status);
                 debug!("Response headers: {:?}", resp.headers());
-                return Ok(resp);
+                
+                // Read the entire response body
+                let body_bytes = hyper::body::to_bytes(resp.into_body()).await?;
+                
+                // Create a new response with the read body
+                return Ok(Response::builder()
+                    .status(status)
+                    .body(Body::from(body_bytes))
+                    .unwrap());
             }
             Ok(Err(e)) => {
                 error!(
