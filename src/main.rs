@@ -2,7 +2,7 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Client, Request, Response, Server, Uri,
 };
-use hyper_tls::HttpsConnector;
+use hyper_rustls::HttpsConnectorBuilder;
 use std::convert::Infallible;
 use std::env;
 use std::net::SocketAddr;
@@ -12,6 +12,7 @@ use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() {
+    println!("Print statement to stdout - starting s3-proxy");
     FmtSubscriber::builder()
         .with_max_level(tracing::Level::DEBUG)
         .init();
@@ -21,7 +22,6 @@ async fn main() {
     let s3_url = env::var("S3_URL").expect("S3_URL environment variable not set");
     info!("S3_URL set to {}", s3_url);
 
-    // Parse the S3 base URI
     let s3_base_uri = match s3_url.parse::<Uri>() {
         Ok(uri) => {
             info!("Parsed S3_URL successfully");
@@ -68,7 +68,11 @@ async fn proxy_handler(
         req.uri()
     );
 
-    let https = HttpsConnector::new();
+    let https = HttpsConnectorBuilder::new()
+        .with_native_roots()
+        .https_only()
+        .enable_http1()
+        .build();
     let client = Client::builder().build::<_, hyper::Body>(https);
 
     let mut parts = s3_base_uri.into_parts();

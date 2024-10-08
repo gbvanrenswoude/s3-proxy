@@ -15,6 +15,6 @@ COPY --from=builder /app/target/release/s3-proxy /app/s3-proxy
 
 EXPOSE 8090
 
-ENV S3_URL=https://s3-bucket-as-loginpage.ds-fdn-d.aws.insim.biz.s3.eu-west-1.amazonaws.com/index.html
+ENV S3_URL=https://s3-bucket-as-loginpage.ds-fdn-d.aws.insim.biz.s3.eu-west-1.amazonaws.com
 
 CMD ["./s3-proxy"]
