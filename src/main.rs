@@ -39,6 +39,7 @@ impl ServerCertVerifier for NoVerifier {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("SIG");
     // Initialize tracing with debug level
     let subscriber = FmtSubscriber::builder()
         .with_env_filter(
@@ -264,9 +265,11 @@ fn construct_uri(base_uri: &Uri, request_uri: &Uri) -> Result<Uri, hyper::http::
     Uri::from_parts(parts).map_err(|e| hyper::http::Error::from(e))
 }
 
-fn is_valid_s3_request(_req: &Request<Body>) -> bool {
-    // Implement your S3 request validation logic here
-    // For example, check if the path starts with a valid bucket name
-    // or if the request contains required S3 headers
-    true // Placeholder
+fn is_valid_s3_request(req: &Request<Body>) -> bool {
+    let path = req.uri().path();
+    if path.is_empty() || path == "/" {
+        warn!("Invalid URI path: {}", path);
+        return false;
+    }
+    true
 }
